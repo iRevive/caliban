@@ -1,7 +1,5 @@
 import sbtcrossproject.CrossPlugin.autoImport.{ crossProject, CrossType }
 
-val mainScala = "2.12.12"
-val allScala  = Seq("2.13.3", mainScala)
 
 val akkaVersion           = "2.6.10"
 val catsEffectVersion     = "2.2.0"
@@ -21,8 +19,7 @@ val zqueryVersion         = "0.2.5"
 
 inThisBuild(
   List(
-    scalaVersion := mainScala,
-    crossScalaVersions := allScala,
+    scalaVersion := "2.13.3",
     organization := "com.github.ghostdogpr",
     homepage := Some(url("https://github.com/ghostdogpr/caliban")),
     licenses := List(
@@ -62,19 +59,13 @@ lazy val root = project
   .aggregate(
     macros,
     core,
-    finch,
     http4s,
-    akkaHttp,
 //    uzhttp,
     play,
     catsInterop,
-    monixInterop,
-    tapirInterop,
     clientJVM,
     clientJS,
-    tools,
-    codegenSbt,
-    federation
+    tools
   )
 
 lazy val macros = project
