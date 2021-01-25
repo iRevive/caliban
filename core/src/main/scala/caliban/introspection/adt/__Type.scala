@@ -90,9 +90,15 @@ case class __Type(
             description,
             name.getOrElse(""),
             directives.getOrElse(Nil),
-            fields(__DeprecatedArgs(Some(true))).getOrElse(Nil).map(_.toInputValueDefinition)
+            inputFields.getOrElse(Nil).map(_.toInputValueDefinition)
           )
         )
       case _ => None
+    }
+
+  def isNullable: Boolean =
+    kind match {
+      case __TypeKind.NON_NULL => false
+      case _                   => true
     }
 }

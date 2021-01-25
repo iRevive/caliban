@@ -1,10 +1,11 @@
 package caliban
 
 import caliban.Value.NullValue
+import caliban.execution.QueryExecution
 import io.circe.Decoder.Result
 import io.circe.Json
-import io.circe.syntax._
 import io.circe.parser._
+import io.circe.syntax._
 import io.finch._
 import shapeless._
 import zio.interop.catz._
@@ -33,11 +34,18 @@ object FinchAdapter extends Endpoint.Module[Task] {
     request: GraphQLRequest,
     interpreter: GraphQLInterpreter[R, E],
     skipValidation: Boolean,
-    enableIntrospection: Boolean
+    enableIntrospection: Boolean,
+    queryExecution: QueryExecution
   )(implicit runtime: Runtime[R]) =
     runtime
       .unsafeRunToFuture(
-        createRequest(request, interpreter, skipValidation = skipValidation, enableIntrospection = enableIntrospection)
+        createRequest(
+          request,
+          interpreter,
+          skipValidation = skipValidation,
+          enableIntrospection = enableIntrospection,
+          queryExecution
+        )
       )
       .future
 
@@ -45,10 +53,16 @@ object FinchAdapter extends Endpoint.Module[Task] {
     request: GraphQLRequest,
     interpreter: GraphQLInterpreter[R, E],
     skipValidation: Boolean,
-    enableIntrospection: Boolean
+    enableIntrospection: Boolean,
+    queryExecution: QueryExecution
   )(implicit runtime: Runtime[R]): URIO[R, Output[Json]] =
     interpreter
-      .executeRequest(request, skipValidation = skipValidation, enableIntrospection = enableIntrospection)
+      .executeRequest(
+        request,
+        skipValidation = skipValidation,
+        enableIntrospection = enableIntrospection,
+        queryExecution
+      )
       .foldCause(cause => GraphQLResponse(NullValue, cause.defects).asJson, _.asJson)
       .map(gqlResult => Ok(gqlResult))
 
@@ -76,29 +90,42 @@ object FinchAdapter extends Endpoint.Module[Task] {
   def makeHttpService[R, E](
     interpreter: GraphQLInterpreter[R, E],
     skipValidation: Boolean = false,
-    enableIntrospection: Boolean = true
+    enableIntrospection: Boolean = true,
+    queryExecution: QueryExecution = QueryExecution.Parallel
   )(implicit runtime: Runtime[R]): Endpoint[Task, Json :+: Json :+: CNil] =
-    post(queryParams :: stringBodyOption :: header("content-type")) {
-      (queryRequest: GraphQLRequest, body: Option[String], contentType: String) =>
-        val queryTask = (queryRequest, body, contentType) match {
-          case (_, Some(bodyValue), "application/json") =>
-            Task.fromEither(parse(bodyValue).flatMap(_.as[GraphQLRequest]))
-          case (_, Some(_), "application/graphql") =>
-            Task(GraphQLRequest(body))
-          case (queryRequest, _, _) if queryRequest.query.isDefined =>
-            Task(queryRequest)
-          // treat unmatched content-type as same as None of body.
-          case _ =>
-            Task.fail(new Exception("Query was not found"))
-        }
-        runtime
-          .unsafeRunToFuture(
-            queryTask
-              .flatMap(createRequest(_, interpreter, skipValidation, enableIntrospection))
-              .catchAll(error => Task(Ok(GraphQLResponse(NullValue, List(error.getMessage)).asJson)))
-          )
-          .future
+    post(
+      queryParams :: stringBodyOption :: header("content-type") :: headerOption(
+        GraphQLRequest.`apollo-federation-include-trace`
+      )
+    ) { (queryRequest: GraphQLRequest, body: Option[String], contentType: String, federatedTracing: Option[String]) =>
+      val queryTask = (queryRequest, body, contentType) match {
+        case (_, Some(bodyValue), "application/json") =>
+          Task.fromEither(parse(bodyValue).flatMap(_.as[GraphQLRequest]))
+        case (_, Some(_), "application/graphql") =>
+          Task(GraphQLRequest(body))
+        case (queryRequest, _, _) if queryRequest.query.isDefined =>
+          Task(queryRequest)
+        // treat unmatched content-type as same as None of body.
+        case _ =>
+          Task.fail(new Exception("Query was not found"))
+      }
+      runtime
+        .unsafeRunToFuture(
+          queryTask.map { query =>
+            if (federatedTracing.contains(GraphQLRequest.ftv1))
+              query.withFederatedTracing
+            else query
+          }.flatMap(createRequest(_, interpreter, skipValidation, enableIntrospection, queryExecution))
+            .catchAll(error => Task(Ok(GraphQLResponse(NullValue, List(error.getMessage)).asJson)))
+        )
+        .future
     } :+: get(queryParams) { request: GraphQLRequest =>
-      executeRequest(request, interpreter, skipValidation = skipValidation, enableIntrospection = enableIntrospection)
+      executeRequest(
+        request,
+        interpreter,
+        skipValidation = skipValidation,
+        enableIntrospection = enableIntrospection,
+        queryExecution
+      )
     }
 }
