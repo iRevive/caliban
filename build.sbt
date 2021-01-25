@@ -79,17 +79,6 @@ lazy val macros = project
     )
   )
 
-lazy val macros = project
-  .in(file("macros"))
-  .settings(name := "caliban-macros")
-  .settings(commonSettings)
-  .settings(
-    libraryDependencies ++= Seq(
-      "com.propensive" %% "magnolia" % magnoliaVersion,
-      "com.propensive" %% "mercator" % mercatorVersion
-    )
-  )
-
 lazy val core = project
   .in(file("core"))
   .settings(name := "caliban")
