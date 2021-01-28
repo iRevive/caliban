@@ -20,6 +20,7 @@ val zioJsonVersion        = "0.0.1"
 inThisBuild(
   List(
     scalaVersion := "2.13.3",
+    crossScalaVersions := Seq("2.12.12", "2.13.3"),
     organization := "io.github.irevive",
     homepage := Some(url("https://github.com/ghostdogpr/caliban")),
     licenses := List(
